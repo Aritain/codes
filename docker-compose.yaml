@@ -1,0 +1,17 @@
+version: '2.4'
+
+services:
+  codes:
+    build: 
+      context: ./
+      dockerfile: ./Dockerfile
+    image: codes:latest
+    container_name: codes
+    restart: always
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '2'
+    environment:
+        FOOBAR: 
