@@ -3,10 +3,15 @@ package common
 import (
 	"encoding/json"
 	"encoding/xml"
+	"log"
+	m "main/models"
 	"net/http"
+	"time"
 
 	t "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
+
+const TIMEOUT = 5
 
 func CompileYesNoKeyboard() t.ReplyKeyboardMarkup {
 	var keyboard = t.NewReplyKeyboard(
@@ -51,4 +56,19 @@ func GetRequest[T any](url string, mode string, params map[string]string, header
 	}
 
 	return results, false
+}
+
+func SendTGMessage(tgm m.TGMessage) {
+	bot, _ := t.NewBotAPI(tgm.TGToken)
+	msg := t.NewMessage(tgm.UserID, tgm.Text)
+	var err error
+
+	for {
+		_, err = bot.Send(msg)
+		if err == nil {
+			break
+		}
+		log.Print(err)
+		time.Sleep(TIMEOUT * time.Second)
+	}
 }

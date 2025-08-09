@@ -10,8 +10,9 @@ import (
 	"os"
 	"reflect"
 	"slices"
-	"strings"
 	"time"
+
+	d "github.com/gtuk/discordwebhook"
 )
 
 const TIMEOUT = 5
@@ -23,12 +24,9 @@ func FetchCodes() {
 		{Name: config.HCodesName, URL: config.HCodesEndpoint},
 		{Name: config.ZCodesName, URL: config.ZCodesEndpoint},
 	}
-	var name string
 
 	for {
-
-		var newCodes []string
-		newCodes, name = ProcessCodes(config, endpoints)
+		newCodes, name, codesResponse := ProcessCodes(config, endpoints)
 		if len(newCodes) == 0 {
 			time.Sleep(TIMEOUT * time.Minute)
 			continue
@@ -41,33 +39,58 @@ func FetchCodes() {
 			continue
 		}
 		if len(newCodes) != 0 {
-			for _, user := range users.Subscribers {
-				message := FormatCodes(user.UserID, newCodes, config.CodesURL)
-				var tgm models.TGMessage
-				tgm.TGToken = config.TGToken
-				tgm.UserID = user.TGID
-				tgm.Text = message
-				tgm.ParseMode = "HTML"
-				go common.SendTGMessage(tgm)
+			message := FormatCodes(newCodes, name)
+			for _, subscriber := range users.Subscribers {
+				i := GetNameMap(name)
+				if subscriber.CType[i].TGToggle || len(subscriber.CType[i].Webhooks) != 0 {
+					go PrepMSG(subscriber, message, i)
+				}
+
 			}
+			filepath := config.CodesDir + "/" + name + ".json"
+			os.Remove(filepath)
+			file, _ := os.Create(filepath)
+			json.NewEncoder(file).Encode(codesResponse)
+			file.Close()
 		}
-		os.Remove(filepath)
-		file, _ := os.Create(filepath)
-		json.NewEncoder(file).Encode(CodesResponse)
-		file.Close()
-		time.Sleep(TIMEOUT * time.Hour)
+		time.Sleep(TIMEOUT * time.Minute)
 	}
 }
 
-func ProcessCodes(config m.Config, endpoints []m.EndpointMap) (newCodes []string, name string) {
+func PrepMSG(subscriber m.Subscriber, message string, index int) {
+	config := cfg.Get().Config()
+	if subscriber.CType[index].TGToggle {
+		// TG MSG
+		var tgm m.TGMessage
+		tgm.TGToken = config.TGToken
+		tgm.UserID = subscriber.TGID
+		tgm.Text = message
+		c.SendTGMessage(tgm)
+	}
+	for _, webhook := range subscriber.CType[index].Webhooks {
+		dMessage := d.Message{
+			Content: &message,
+		}
+		// TODO - verify that webhook still exist
+		for {
+			err := d.SendMessage(webhook, dMessage)
+			if err == nil {
+				break
+			}
+			log.Print(err)
+			time.Sleep(TIMEOUT * time.Second)
+		}
+	}
+}
+
+func ProcessCodes(config m.Config, endpoints []m.EndpointMap) (newCodes []string, name string, codesResponse m.CodeData) {
 	params := map[string]string{}
 	headers := map[string]string{}
-	var CodesStored m.CodeData
+	var codesStored m.CodeData
 	var fetchError bool
-	var CodesResponse m.CodeData
 	for _, endpoint := range endpoints {
 		filepath := config.CodesDir + "/" + endpoint.Name + ".json"
-		CodesResponse, fetchError = c.GetRequest[m.CodeData](
+		codesResponse, fetchError = c.GetRequest[m.CodeData](
 			endpoint.URL,
 			"json",
 			params, headers,
@@ -78,14 +101,14 @@ func ProcessCodes(config m.Config, endpoints []m.EndpointMap) (newCodes []string
 		}
 		data, err := os.ReadFile(filepath)
 		if err == nil {
-			_ = json.Unmarshal(data, &CodesStored)
+			_ = json.Unmarshal(data, &codesStored)
 		}
-		if reflect.DeepEqual(CodesResponse.Codes, CodesStored.Codes) {
+		if reflect.DeepEqual(codesResponse.Codes, codesStored.Codes) {
 			time.Sleep(TIMEOUT * time.Hour)
 			continue
 		}
-		for _, code := range CodesResponse.Codes {
-			if !slices.Contains(CodesStored.Codes, code) {
+		for _, code := range codesResponse.Codes {
+			if !slices.Contains(codesStored.Codes, code) {
 				newCodes = append(newCodes, code.Code)
 			}
 		}
@@ -97,14 +120,11 @@ func ProcessCodes(config m.Config, endpoints []m.EndpointMap) (newCodes []string
 	return
 }
 
-func FormatCodes(userID string, codes []string, CodesURL string) (codesFormatted string) {
-	for _, code := range codes {
-		fmtURL := CodesURL
-		fmtURL = strings.Replace(fmtURL, "NEW_CODE", code, -1)
-		fmtURL = strings.Replace(fmtURL, "USER_ID", userID, -1)
-		codesFormatted += fmt.Sprintf("<a href='%s'>%s</a>\n", fmtURL, code)
-	}
-	codesFormatted += "\n"
+func FormatCodes(codes []string, name string) (codesFormatted string) {
+	codesFormatted = fmt.Sprintf("New %s for %s\n\n",
+		map[bool]string{true: "code", false: "codes"}[len(codes) == 1],
+		name,
+	)
 	for _, code := range codes {
 		codesFormatted += fmt.Sprintf("%s\n", code)
 	}

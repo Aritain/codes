@@ -12,16 +12,16 @@ type Config struct {
 	CodesDir       string `mapstructure:"CODES_DIR"`
 }
 
+type TGMessage struct {
+	TGToken string
+	UserID  int64
+	Text    string
+}
+
 type SavedChat struct {
 	UserID    int64
 	ChatPath  string
 	ChatStage int8
-}
-
-type Webhook struct {
-	UserID int64
-	Type   string
-	URL    string
 }
 
 // Codes structs
@@ -38,7 +38,14 @@ type Subscribers struct {
 }
 
 type Subscriber struct {
-	TGID int64 `json:"TelegramID"`
+	TGID  int64   `json:"TGID"`
+	CType []CType `json:"CType"`
+}
+
+type CType struct {
+	Name     string   `json:"Name"`
+	TGToggle bool     `json:"TGToggle"`
+	Webhooks []string `json:"Webhooks"`
 }
 
 type EndpointMap struct {

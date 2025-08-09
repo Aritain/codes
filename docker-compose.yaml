@@ -13,5 +13,5 @@ services:
       options:
         max-size: '10m'
         max-file: '2'
-    environment:
-        FOOBAR: 
+    volumes:
+      - ./.codes:/data/codes:rw
